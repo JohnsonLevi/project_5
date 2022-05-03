@@ -1,4 +1,4 @@
-/**
+    /**
  * This file contains implementations for the methods defined in the Simulation
  * class.
  *
@@ -11,21 +11,103 @@
 Simulation::Simulation(FlagOptions& flags)
 {
     this->flags = flags;
-    this->frames.reserve(this->NUM_FRAMES);
-    
+    this->frames.resize(this->NUM_FRAMES);
 }
 
 void Simulation::run() {
-    // TODO: implement me
+    for(size_t i = 0; i < NUM_FRAMES; ++i) {
+        free_frames.push_back(i);
+    }
+
+    for(auto address: virtual_addresses){
+        if(segfault == true){
+            break;
+        }
+        perform_memory_access(address);
+        time++;
+    }
+    if(segfault != true){
+        print_summary();   
+    }
 }
 
 char Simulation::perform_memory_access(const VirtualAddress& virtual_address) {
-    // TODO: implement me
+
+    Process *process = processes.at(virtual_address.process_id);
+    PageTable *table = &process->page_table;//maybe on the & sign
+
+    std::cout << virtual_address << "\n";
+    if(!process->is_valid_page(virtual_address.page)){
+        std::cout << "SEGFAULT - INVALID PAGE";
+        segfault = true;
+    }else if(!process->pages.at(virtual_address.page)->is_valid_offset(virtual_address.offset)){
+        handle_page_fault(process, virtual_address.page);
+        PhysicalAddress phyAddress(table->rows.at(virtual_address.page).frame, virtual_address.offset);
+        std::cout << "\t-> physical address " << phyAddress << "\n";
+        std::cout << "SEGFAULT - INVALID OFFSET";//invalid offset
+        segfault = true;
+    }else{
+        process->memory_accesses++;//increments memory access by 1
+
+         if(table->rows[virtual_address.page].present){//checks to see if it is in the page table
+            table->rows.at(virtual_address.page).last_accessed_at = time;
+            std::cout << "\t-> IN MEMORY" << "\n";
+
+        }else{//there is a page fault.
+                
+            handle_page_fault(process, virtual_address.page);
+        }
+            //prints out physical address and rss
+        PhysicalAddress phyAddress(table->rows.at(virtual_address.page).frame, virtual_address.offset);
+        std::cout << "\t-> physical address " << phyAddress << "\n";
+        std::cout << "\t-> RSS: " << process->get_rss() << "\n";
+    }
+
+
+    
+    std::cout << "\n";
     return 0;
 }
 
 void Simulation::handle_page_fault(Process* process, size_t page) {
     // TODO: implement me
+    std::cout << "\t-> PAGE FAULT\n";
+    page_faults++;
+    process->page_faults++;
+    process->page_table.rows.at(page).loaded_at = time;
+    process->page_table.rows.at(page).last_accessed_at = time;
+
+    if(free_frames.size() != 0 && process->get_rss() < flags.max_frames){
+        frames.at(free_frames.front()).set_page(process, page);
+        process->page_table.rows.at(page).frame = free_frames.front();
+        process->page_table.rows.at(page).present = true;
+        
+        free_frames.pop_front();
+            
+    }else{//if there isn't any frames open
+
+        size_t index;
+
+        if(flags.strategy == ReplacementStrategy::FIFO ){//FIFO
+
+            index = process->page_table.get_oldest_page();
+
+        }else{//LRU
+
+            index = process->page_table.get_least_recently_used_page();
+            
+        }
+        process->page_table.rows.at(index).present = false;
+        frames.at(process->page_table.rows.at(index).frame).set_page(process, page);//currently erroring rn
+        process->page_table.rows.at(page).frame = process->page_table.rows.at(index).frame;
+        process->page_table.rows.at(page).present = true;
+
+        // frames[process->page_table.get_oldest_page()].set_page(process, page);
+            // process->page_table.rows.at(page).frame = process->page_table.get_oldest_page();
+            // process->page_table.rows.at(page).present = true;
+
+    }
+    
 }
 
 void Simulation::print_summary() {

@@ -10,11 +10,13 @@ using namespace std;
 
 string PhysicalAddress::to_string() const {
     // TODO: implement me
-    return "";
+    return bitset<10>(this->frame).to_string() + bitset<6>(this->offset).to_string();
 }
 
 
 ostream& operator <<(ostream& out, const PhysicalAddress& address) {
     // TODO: implement me
+    out << address.to_string() << " [frame: " << address.frame << "; offset: " << address.offset << "]"; // this is a start at least 
+
     return out;
 }
